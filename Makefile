@@ -17,7 +17,7 @@ MAKEFILES := Makefile
 
 LIB	:= lib/libvisu.a
 
-CFLAGS += -O3 -g -Wall -Wno-unused-function
+CFLAGS += -O3 -g -Wall -Wno-unused-function -std=c99
 CFLAGS += -I./include
 
 ifdef OMP

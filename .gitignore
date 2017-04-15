@@ -35,6 +35,3 @@ prog
 
 # Temp files
 *~
-
-# Compilation directory
-deps/
