@@ -1,6 +1,6 @@
-
 #include <SDL.h>
 #include <stdbool.h>
+#include <stdlib.h>
 
 #include "draw.h"
 #include "graphics.h"

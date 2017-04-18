@@ -2,6 +2,7 @@
 #include <SDL_image.h>
 #include <SDL_opengl.h>
 
+
 #include "constants.h"
 #include "graphics.h"
 #include "compute.h"
@@ -215,7 +216,7 @@ void graphics_init (int *argc, char *argv[])
     // Initialisation du moteur de rendu
     ren = SDL_CreateRenderer (win, -1, render_flags);
     if (ren == NULL)
-      exit_with_error ("SDL_CreateRenderer");
+      exit_with_error ("SDL_CreateRenderer %s\n", SDL_GetError());
   }
 
   printf ("Version utilisée : %s ", version_name [version]);

@@ -20,11 +20,11 @@ LIB	:= lib/libvisu.a
 CFLAGS += -O3 -g -Wall -Wno-unused-function -std=c99
 CFLAGS += -I./include
 
-ifdef OMP
-	CC=gcc-mp-6
+#ifdef OMP
+#	CC=gcc-mp-6
 	CFLAGS += -fopenmp
 	LDFLAGS += -fopenmp
-endif
+#endif
 
 CFLAGS += $(shell pkg-config SDL2_image --cflags)
 LDLIBS += $(shell pkg-config SDL2_image --libs)
