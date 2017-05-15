@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <stdbool.h>
 
 #ifdef __APPLE__
 #include <OpenCL/opencl.h>
@@ -19,6 +20,8 @@
 #include "ocl.h"
 #include "graphics.h"
 #include "debug.h"
+
+#define GRAIN 32
 
 #define check(err, ...)					\
   do {							\
@@ -43,6 +46,7 @@ cl_kernel update_kernel;
 cl_kernel compute_kernel;
 cl_command_queue queue;
 cl_mem tex_buffer, cur_buffer, next_buffer;
+cl_mem curr_unchanged, next_unchanged;
 
 static size_t file_size (const char *filename)
 {
@@ -276,7 +280,21 @@ void ocl_init (void)
   if (!next_buffer)
     exit_with_error ("Failed to allocate output buffer");
 
+
+  unsigned tranche = DIM / GRAIN;
+
+  curr_unchanged = clCreateBuffer (context, CL_MEM_READ_WRITE, sizeof(bool) * (tranche+2) * (tranche+2),
+                               NULL, NULL);
+  if (!curr_unchanged)
+      exit_with_error ("Failed to allocate input buffer");
+
+  next_unchanged = clCreateBuffer (context, CL_MEM_READ_WRITE, sizeof(bool) * (tranche+2) * (tranche+2),
+                                  NULL, NULL);
+  if (!next_unchanged)
+      exit_with_error ("Failed to allocate output buffer");
+
   printf ("Using %dx%d workitems grouped in %dx%d tiles \n", SIZE, SIZE, TILEX, TILEY);
+
 }
 
 void ocl_map_textures (GLuint texid)
@@ -287,8 +305,11 @@ void ocl_map_textures (GLuint texid)
   check (err, "Failed to map texture buffer\n");
 }
 
+#define coord(x,y) (x+1)*tranche+y+1
+
 void ocl_send_image (unsigned *image)
 {
+
   err = clEnqueueWriteBuffer (queue, cur_buffer, CL_TRUE, 0,
 			      sizeof (unsigned) * DIM * DIM, image, 0, NULL, NULL);
   check (err, "Failed to write to cur_buffer");
@@ -297,7 +318,24 @@ void ocl_send_image (unsigned *image)
 			      sizeof (unsigned) * DIM * DIM, image, 0, NULL, NULL);
   check (err, "Failed to write to next_buffer");
 
+
   PRINT_DEBUG ('o', "Initial image sent to device.\n");
+
+  unsigned tranche = DIM / GRAIN;
+  bool *unchanged = malloc(sizeof(unsigned)*(tranche+2)*(tranche+2));
+  for(int tuilex=-1; tuilex<=tranche;tuilex++)
+      for (int tuiley=-1; tuiley<=tranche; tuiley++)
+          unchanged[coord(tuilex,tuiley)] = false;
+
+  err = clEnqueueWriteBuffer (queue, curr_unchanged, CL_TRUE, 0,
+                              sizeof(bool) * (tranche+2) * (tranche+2), unchanged, 0, NULL, NULL);
+  check (err, "Failed to write to cur_buffer");
+
+  err = clEnqueueWriteBuffer (queue, next_unchanged, CL_TRUE, 0,
+                              sizeof(bool) * (tranche+2) * (tranche+2), unchanged, 0, NULL, NULL);
+  check (err, "Failed to write to next_buffer");
+
+  free(unchanged);
 }
 
 unsigned ocl_compute (unsigned nb_iter)
@@ -325,6 +363,40 @@ unsigned ocl_compute (unsigned nb_iter)
 
   return 0;
 }
+
+unsigned ocl_compute_opt (unsigned nb_iter)
+{
+
+  size_t global[2] = { SIZE, SIZE };  // global domain size for our calculation
+  size_t local[2]  = { TILEX, TILEY };  // local domain size for our calculation
+
+  for (unsigned it = 1; it <= nb_iter; it ++) {
+
+    // Set kernel arguments
+    //
+    err = 0;
+    err  = clSetKernelArg (compute_kernel, 0, sizeof (cl_mem), &cur_buffer);
+    err  = clSetKernelArg (compute_kernel, 1, sizeof (cl_mem), &next_buffer);
+    err  = clSetKernelArg (compute_kernel, 2, sizeof (cl_mem), curr_unchanged);
+    err  = clSetKernelArg (compute_kernel, 3, sizeof (cl_mem), next_unchanged);
+    check (err, "Failed to set kernel arguments");
+
+    err = clEnqueueNDRangeKernel (queue, compute_kernel, 2, NULL, global, local,
+                                  0, NULL, NULL);
+    check(err, "Failed to execute kernel");
+
+    // Swap buffers
+    { cl_mem tmp = cur_buffer; cur_buffer = next_buffer; next_buffer = tmp;
+   tmp = curr_unchanged; curr_unchanged = next_unchanged; next_unchanged = tmp;}
+
+
+  }
+
+  free(curr_unchanged);
+  free(next_unchanged);
+  return 0;
+}
+
 
 void ocl_wait (void)
 {
