@@ -22,12 +22,13 @@ unsigned openMP_for_v1 (unsigned nb_iter);
 unsigned openMP_for_v2 (unsigned nb_iter);
 unsigned compute_v3 (unsigned nb_iter);
 unsigned compute_v4 (unsigned nb_iter);
-
+unsigned compute_v5 (unsigned nb_iter);
 
 void_func_t first_touch [] = {
     NULL,
     first_touch_v1,
     first_touch_v2,
+    NULL,
     NULL,
     NULL,
     NULL,
@@ -43,7 +44,8 @@ int_func_t compute [] = {
     openMP_for_v1,
     openMP_for_v2,
     compute_v3,
-    compute_v4
+    compute_v4,
+    compute_v5
 };
 
 char *version_name [] = {
@@ -54,7 +56,8 @@ char *version_name [] = {
     "OpenMP tuilé",
     "OpenMp optimisé",
     "OpenCL",
-    "OpenCL optimisé"
+    "OpenCL optimisé",
+    "Hybrid"
 };
 
 unsigned opencl_used [] = {
@@ -64,6 +67,7 @@ unsigned opencl_used [] = {
     0,
     0,
     0,
+    1,
     1,
     1
 };
@@ -96,7 +100,7 @@ unsigned compute_v0(unsigned nb_iter) {
                     else
                         next_img(x,y) = 0;
                 }
-               // next_img(x, y) = ((cur_img(x, y) && n==2) || n==3) * couleur;
+                // next_img(x, y) = ((cur_img(x, y) && n==2) || n==3) * couleur;
 
             }
         }
@@ -151,7 +155,7 @@ void first_touch_v1 (void) {}
 
 ///////////////////////////// Version séquentielle avec tuiles
 
-#define GRAIN 32
+#define GRAIN 16
 
 // Renvoie le nombre d'itérations effectuées avant stabilisation, ou 0
 unsigned compute_v1(unsigned nb_iter){
@@ -323,7 +327,7 @@ unsigned compute_v2(unsigned nb_iter)
                                         tuile_unchanged = false;
                                         next_img(x,y) = couleur;
                                     }
-                                        else
+                                    else
                                         next_img(x,y) = 0;
                                 }
                             }
@@ -370,7 +374,7 @@ unsigned openMP_for_v2(unsigned nb_iter)
 #pragma omp parallel for schedule(guided,4) collapse(2)
         for (int tuilex = 0; tuilex < tranche; tuilex++) {
             for (int tuiley = 0; tuiley < tranche; tuiley++) {
-unsigned compute_v3 (unsigned nb_iter);
+
                 if (!curr_unchanged[coord(tuilex,tuiley)] ||
                         !curr_unchanged[coord(tuilex+1,tuiley)] ||
                         !curr_unchanged[coord(tuilex-1,tuiley)] ||
@@ -409,7 +413,7 @@ unsigned compute_v3 (unsigned nb_iter);
                                         tuile_unchanged = false;
                                         next_img(x,y) = couleur;
                                     }
-                                        else
+                                    else
                                         next_img(x,y) = 0;
                                 }
                             }
@@ -450,4 +454,88 @@ unsigned compute_v3 (unsigned nb_iter) {
 // Renvoie le nombre d'itérations effectuées avant stabilisation, ou 0
 unsigned compute_v4 (unsigned nb_iter) {
     return ocl_compute_opt (nb_iter);
+}
+
+#define GPU_FRAC 92
+
+unsigned * picture;
+
+// Renvoie le nombre d'itérations effectuées avant stabilisation, ou 0
+unsigned compute_v5 (unsigned nb_iter) {
+    static bool first = true;
+    if (first) {
+        first = false;
+       picture = malloc(sizeof(unsigned) * DIM * DIM);
+    }
+
+
+    unsigned tranche = DIM / GRAIN;
+    unsigned nb_tranches = compute_ratio(GPU_FRAC);
+    unsigned cpu_calc = nb_tranches/GRAIN;
+    //printf("%d\n", nb_tranches);
+
+    for (unsigned it = 1; it <= nb_iter; it ++) {
+
+        /*pthread_create(&thread, NULL, start, (void *) nb_iter);
+        pthread_yield();*/
+#pragma omp parallel
+        {
+#pragma omp single
+            ocl_compute_hybrid(nb_iter, nb_tranches);
+#pragma omp for schedule(guided,4) collapse(2)
+            for (unsigned tuilex = cpu_calc-1; tuilex < tranche; tuilex++) {
+                for (unsigned tuiley = 0; tuiley < tranche; tuiley++) {
+
+                    for (int xloc = 0; xloc < GRAIN; xloc++) {
+                        for (int yloc = 0; yloc < GRAIN; yloc++) {
+                            unsigned x=tuilex*GRAIN+xloc;
+                            unsigned y=tuiley*GRAIN+yloc;
+                            if (x>0 && x<DIM && y>0 && y<DIM) {
+                                int n = (cur_img(x-1, y-1) !=0) +
+                                        (cur_img(x-1, y)   !=0) +
+                                        (cur_img(x-1, y+1) !=0) +
+                                        (cur_img(x  , y-1) !=0) +
+                                        (cur_img(x  , y+1) !=0) +
+                                        (cur_img(x+1, y-1) !=0) +
+                                        (cur_img(x+1, y)   !=0) +
+                                        (cur_img(x+1, y+1) !=0);
+                                if (cur_img(x, y)) {
+                                    if (n==2 || n==3)
+                                        next_img(x,y) = couleur;
+                                    else
+                                        next_img(x,y) = 0;
+                                }
+                                else {
+                                    if (n==3)
+                                        next_img(x,y) = couleur;
+                                    else
+                                        next_img(x,y) = 0;
+                                }
+                            }
+                        }
+                    }
+
+                }
+            }
+        }
+
+        swap_images();
+        get_picture_back(picture);
+        #pragma omp parallel for schedule(guided,4) collapse(2)
+        for (int x=0; x<DIM; x++) {
+            for (int y=0; y<nb_tranches; y++) {
+                cur_img(y,x) = picture[y*DIM+x];
+            }
+        }
+        #pragma omp parallel for schedule(guided,4) collapse(2)
+        for (int x=0; x<DIM; x++) {
+            for (int y=nb_tranches; y<DIM; y++) {
+                picture[y*DIM+x] = cur_img(y,x);
+            }
+        }
+        put_picture(picture);
+
+    }
+
+    return 0;
 }

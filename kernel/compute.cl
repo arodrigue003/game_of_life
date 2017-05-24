@@ -102,25 +102,25 @@ __kernel void compute_pixel_tuile(__global unsigned *in, __global unsigned *out)
     //load values upside to the area
     if ((y>0) && (yloc == 0)) {
         tile[0][xloc+1] = in[(y-1)*DIM + x];
-        if (xloc==0)
+        if (x>0 && xloc==0)
             tile[0][0] = in[(y-1)*DIM+x-1];
-        if (xloc==TILEX-1)
+        if (x<DIM-1 && xloc==TILEX-1)
             tile[0][TILEX+1] = in[(y-1)*DIM+x+1];
     }
     //load values below the area
     if ((y<DIM-1) && (yloc == TILEY-1)) {
-      tile[yloc+1+1][xloc+1] = in[(y+1)*DIM + x];
-      if (yloc==0)
+      tile[TILEY+1][xloc+1] = in[(y+1)*DIM + x];
+      if (x>0 && xloc==0)
           tile[TILEY+1][0] = in[(y+1)*DIM+x-1];
-      if (yloc==TILEY-1)
+      if (x<DIM-1 && xloc==TILEX-1)
           tile[TILEY+1][TILEX+1] = in[(y+1)*DIM+x+1];
     }
     //load values left to the area
     if ((x>0) && (xloc == 0))
-      tile[yloc+1][xloc+1-1] = in[y*DIM + x-1];
+      tile[yloc+1][0] = in[y*DIM + x-1];
     //load values right to the area
     if ((x<DIM-1) && (xloc == TILEX-1))
-      tile[yloc+1][xloc+1+1] = in[y*DIM + x+1];
+      tile[yloc+1][TILEX+1] = in[y*DIM + x+1];
     barrier(CLK_LOCAL_MEM_FENCE);
 
     if (x>0 && y>0 && x<DIM-1 && y<DIM-1) {
@@ -137,45 +137,94 @@ __kernel void compute_pixel_tuile(__global unsigned *in, __global unsigned *out)
 }
 
 __kernel void compute_pixel_opt(__global unsigned *in, __global unsigned *out, __global bool *curr_unchanged, __global bool *next_unchanged) {
-    __local unsigned tile[TILEY+2][TILEX+2];
-    int x = get_global_id(0);
-    int y = get_global_id(1);
+    __local bool compute;
+    int tuilex = get_group_id(0);
+    int tuiley = get_group_id(1);
+    int tranche = get_num_groups(0);
     int xloc = get_local_id(0);
     int yloc = get_local_id(1);
+
+    if (xloc == 0 && yloc == 0) {
+        compute = !(curr_unchanged[(tuiley+1)*tranche+tuilex+1] &&
+            curr_unchanged[(tuiley+1)*tranche+tuilex+1+1] &&
+            curr_unchanged[(tuiley+1)*tranche+tuilex-1+1] &&
+            curr_unchanged[(tuiley+1+1)*tranche+tuilex+1] &&
+            curr_unchanged[(tuiley-1+1)*tranche+tuilex+1] &&
+            curr_unchanged[(tuiley+1+1)*tranche+tuilex+1+1] &&
+            curr_unchanged[(tuiley-1+1)*tranche+tuilex+1+1] &&
+            curr_unchanged[(tuiley+1+1)*tranche+tuilex-1+1] &&
+            curr_unchanged[(tuiley-1+1)*tranche+tuilex-1+1]);
+        next_unchanged[(tuiley+1)*tranche+tuilex+1] = true;
+    }
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    if (!compute)
+        return;
+
+    __local unsigned tile[TILEY+2][TILEX+2];
+    __local bool tuile_unchanged;
+    tuile_unchanged = true;
+    int x = get_global_id(0);
+    int y = get_global_id(1);
+
     tile[yloc+1][xloc+1] = in[y * DIM + x]; //The local size area is in the center of the tile
     //load values upside to the area
     if ((y>0) && (yloc == 0)) {
-        tile[yloc+1-1][xloc+1] = in[(y-1)*DIM + x];
-        if (xloc==0)
+        tile[0][xloc+1] = in[(y-1)*DIM + x];
+        if (x>0 && xloc==0)
             tile[0][0] = in[(y-1)*DIM+x-1];
-        if (xloc==TILEX-1)
+        if (x<DIM-1 && xloc==TILEX-1)
             tile[0][TILEX+1] = in[(y-1)*DIM+x+1];
     }
     //load values below the area
     if ((y<DIM-1) && (yloc == TILEY-1)) {
-      tile[yloc+1+1][xloc+1] = in[(y+1)*DIM + x];
-      if (yloc==0)
+      tile[TILEY+1][xloc+1] = in[(y+1)*DIM + x];
+      if (x>0 && xloc==0)
           tile[TILEY+1][0] = in[(y+1)*DIM+x-1];
-      if (yloc==TILEY-1)
+      if (x<DIM-1 && xloc==TILEX-1)
           tile[TILEY+1][TILEX+1] = in[(y+1)*DIM+x+1];
     }
     //load values left to the area
     if ((x>0) && (xloc == 0))
-      tile[yloc+1][xloc+1-1] = in[y*DIM + x-1];
+      tile[yloc+1][0] = in[y*DIM + x-1];
     //load values right to the area
     if ((x<DIM-1) && (xloc == TILEX-1))
-      tile[yloc+1][xloc+1+1] = in[y*DIM + x+1];
+      tile[yloc+1][TILEX+1] = in[y*DIM + x+1];
     barrier(CLK_LOCAL_MEM_FENCE);
 
-    if (x>0 && y>0 && x<DIM-1 && y<DIM-1) {
-    int n = (tile[yloc-1+1][xloc-1+1] !=0) +
-            (tile[yloc-1+1][xloc+1]   !=0) +
-            (tile[yloc-1+1][xloc+1+1] !=0) +
-            (tile[yloc+1][xloc-1+1] !=0) +
-            (tile[yloc+1][xloc+1+1] !=0) +
-            (tile[yloc+1+1][xloc-1+1] !=0) +
-            (tile[yloc+1+1][xloc+1]   !=0) +
-            (tile[yloc+1+1][xloc+1+1] !=0);
-        out[y*DIM+x] = (n==3 || (n==2 && tile[yloc+1][xloc+1])) * 0xFFFF00FF;
-    }
+    if (compute && x>0 && y>0 && x<DIM-1 && y<DIM-1) {
+
+
+                        int n = (tile[yloc-1+1][xloc-1+1] !=0) +
+                            (tile[yloc-1+1][xloc+1]   !=0) +
+                            (tile[yloc-1+1][xloc+1+1] !=0) +
+                            (tile[yloc+1][xloc-1+1] !=0) +
+                            (tile[yloc+1][xloc+1+1] !=0) +
+                            (tile[yloc+1+1][xloc-1+1] !=0) +
+                            (tile[yloc+1+1][xloc+1]   !=0) +
+                            (tile[yloc+1+1][xloc+1+1] !=0);
+                        if (tile[yloc+1][xloc+1]) {
+                            if (n==2 || n==3)
+                                out[y*DIM+x] = 0xFFFF00FF;
+                            else {
+                                //cell dies
+                                tuile_unchanged = false;
+                                out[y*DIM+x] = 0;
+                            }
+                        }
+                        else {
+                            if (n==3) {
+                                //cell creation
+                                tuile_unchanged = false;
+                                out[y*DIM+x] = 0xFFFF00FF;
+                            }
+                            else
+                                out[y*DIM+x] = 0;
+                        }
+
+                }
+
+    barrier(CLK_LOCAL_MEM_FENCE);
+    if (xloc==0 && yloc==0)
+        next_unchanged[(tuiley+1)*tranche+tuilex+1] = tuile_unchanged;
 }
