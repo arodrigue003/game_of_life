@@ -7,17 +7,18 @@
 #include <stdbool.h>
 #include <stdio.h>
 
+#define GRAIN 16
+
 static unsigned couleur = 0xFFFF00FF; // Yellow
 
 unsigned version = 0;
 
-void first_touch_v1 (void);
-void first_touch_v2 (void);
-
-unsigned compute_v0 (unsigned nb_iter);
+unsigned compute_v0 (unsigned nb_iter); //l99
 unsigned compute_v1 (unsigned nb_iter);
+void init_compute_tuile_opt();
 unsigned compute_v2 (unsigned nb_iter);
-unsigned openMP_for_v0 (unsigned nb_iter);
+void free_compute_tuile_opt();
+unsigned openMP_for_v0 (unsigned nb_iter); //l118
 unsigned openMP_for_v1 (unsigned nb_iter);
 unsigned openMP_for_v2 (unsigned nb_iter);
 unsigned compute_v3 (unsigned nb_iter);
@@ -26,8 +27,8 @@ unsigned compute_v5 (unsigned nb_iter);
 
 void_func_t first_touch [] = {
     NULL,
-    first_touch_v1,
-    first_touch_v2,
+    NULL,
+    NULL,
     NULL,
     NULL,
     NULL,
@@ -72,38 +73,76 @@ unsigned opencl_used [] = {
     1
 };
 
+unsigned init_required [] = {
+    0,
+    0,
+    1,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0
+};
+
+void_func_t init_version [] = {
+    NULL,
+    NULL,
+    init_compute_tuile_opt,
+    NULL,
+    NULL,
+    init_compute_tuile_opt,
+    NULL,
+    NULL,
+    NULL
+};
+
+void_func_t free_version [] = {
+    NULL,
+    NULL,
+    free_compute_tuile_opt,
+    NULL,
+    NULL,
+    free_compute_tuile_opt,
+    NULL,
+    NULL,
+    NULL
+};
+
+static inline void compute_case(int x, int y) {
+    int n = (cur_img(y-1, x-1) !=0) +
+            (cur_img(y-1, x)   !=0) +
+            (cur_img(y-1, x+1) !=0) +
+            (cur_img(y  , x-1) !=0) +
+            (cur_img(y  , x+1) !=0) +
+            (cur_img(y+1, x-1) !=0) +
+            (cur_img(y+1, x)   !=0) +
+            (cur_img(y+1, x+1) !=0);
+    if (cur_img(y, x)) {
+        if (n==2 || n==3)
+            next_img(y,x) = couleur;
+        else
+            next_img(y,x) = 0;
+    }
+    else {
+        if (n==3)
+            next_img(y,x) = couleur;
+        else
+            next_img(y,x) = 0;
+    }
+}
+
+
 ///////////////////////////// Version séquentielle simple
-
-
 unsigned compute_v0(unsigned nb_iter) {
 
     for (unsigned it = 1; it <= nb_iter; it ++) {
-        for (int x = 1; x < DIM-1; x++) {
-            for (int y = 1; y < DIM-1; y++) {
-                int n = (cur_img(x-1, y-1) !=0) +
-                        (cur_img(x-1, y)   !=0) +
-                        (cur_img(x-1, y+1) !=0) +
-                        (cur_img(x  , y-1) !=0) +
-                        (cur_img(x  , y+1) !=0) +
-                        (cur_img(x+1, y-1) !=0) +
-                        (cur_img(x+1, y)   !=0) +
-                        (cur_img(x+1, y+1) !=0);
-                if (cur_img(x, y)) {
-                    if (n==2 || n==3)
-                        next_img(x,y) = couleur;
-                    else
-                        next_img(x,y) = 0;
-                }
-                else {
-                    if (n==3)
-                        next_img(x,y) = couleur;
-                    else
-                        next_img(x,y) = 0;
-                }
-                // next_img(x, y) = ((cur_img(x, y) && n==2) || n==3) * couleur;
 
-            }
-        }
+        for (int y = 1; y < DIM-1; y++)
+            for (int x = 1; x < DIM-1; x++)
+                compute_case(x,y);
+
+
         swap_images();
     }
     // retourne le nombre d'étapes nécessaires à la
@@ -114,36 +153,15 @@ unsigned compute_v0(unsigned nb_iter) {
 
 
 ///////////////////////////// Version OpenMP de base
-
 unsigned openMP_for_v0(unsigned nb_iter) {
+
     for (unsigned it = 1; it <= nb_iter; it ++) {
 
 #pragma omp parallel for schedule(guided,4) collapse(2)
-        for (int x = 1; x < DIM-1; x++) {
-            for (int y = 1; y < DIM-1; y++) {
-                int n = (cur_img(x-1, y-1) !=0) +
-                        (cur_img(x-1, y)   !=0) +
-                        (cur_img(x-1, y+1) !=0) +
-                        (cur_img(x  , y-1) !=0) +
-                        (cur_img(x  , y+1) !=0) +
-                        (cur_img(x+1, y-1) !=0) +
-                        (cur_img(x+1, y)   !=0) +
-                        (cur_img(x+1, y+1) !=0);
-                if (cur_img(x, y)) {
-                    if (n==2 || n==3)
-                        next_img(x,y) = couleur;
-                    else
-                        next_img(x,y) = 0;
-                }
-                else {
-                    if (n==3)
-                        next_img(x,y) = couleur;
-                    else
-                        next_img(x,y) = 0;
-                }
+        for (int y = 1; y < DIM-1; y++)
+            for (int x = 1; x < DIM-1; x++)
+                compute_case(x,y);
 
-            }
-        }
         swap_images();
     }
 
@@ -151,49 +169,28 @@ unsigned openMP_for_v0(unsigned nb_iter) {
 }
 
 
-void first_touch_v1 (void) {}
 
 ///////////////////////////// Version séquentielle avec tuiles
-
-#define GRAIN 16
-
-// Renvoie le nombre d'itérations effectuées avant stabilisation, ou 0
 unsigned compute_v1(unsigned nb_iter){
     unsigned tranche = DIM / GRAIN;
 
     for (unsigned it = 1; it <= nb_iter; it ++) {
-        for (unsigned tuilex = 0; tuilex < tranche; tuilex++) {
-            for (unsigned tuiley = 0; tuiley < tranche; tuiley++) {
-                for (int xloc = 0; xloc < GRAIN; xloc++) {
-                    for (int yloc = 0; yloc < GRAIN; yloc++) {
-                        unsigned x=tuilex*GRAIN+xloc;
+
+        for (unsigned tuiley = 0; tuiley < tranche; tuiley++) {
+            for (unsigned tuilex = 0; tuilex < tranche; tuilex++) {
+
+                for (int yloc = 0; yloc < GRAIN; yloc++) {
+                    for (int xloc = 0; xloc < GRAIN; xloc++) {
                         unsigned y=tuiley*GRAIN+yloc;
-                        if (x>0 && x<DIM && y>0 && y<DIM) {
-                            int n = (cur_img(x-1, y-1) !=0) +
-                                    (cur_img(x-1, y)   !=0) +
-                                    (cur_img(x-1, y+1) !=0) +
-                                    (cur_img(x  , y-1) !=0) +
-                                    (cur_img(x  , y+1) !=0) +
-                                    (cur_img(x+1, y-1) !=0) +
-                                    (cur_img(x+1, y)   !=0) +
-                                    (cur_img(x+1, y+1) !=0);
-                            if (cur_img(x, y)) {
-                                if (n==2 || n==3)
-                                    next_img(x,y) = couleur;
-                                else
-                                    next_img(x,y) = 0;
-                            }
-                            else {
-                                if (n==3)
-                                    next_img(x,y) = couleur;
-                                else
-                                    next_img(x,y) = 0;
-                            }
-                        }
+                        unsigned x=tuilex*GRAIN+xloc;
+                        if (x>0 && x<DIM-1 && y>0 && y<DIM-1)
+                            compute_case(x,y);
                     }
                 }
+
             }
         }
+
         swap_images();
     }
 
@@ -202,48 +199,26 @@ unsigned compute_v1(unsigned nb_iter){
 
 
 ///////////////////////////// Version OpenMP avec tuiles
-
 unsigned openMP_for_v1(unsigned nb_iter) {
     unsigned tranche = DIM / GRAIN;
 
     for (unsigned it = 1; it <= nb_iter; it ++) {
 
 #pragma omp parallel for schedule(guided,4) collapse(2)
-        for (unsigned tuilex = 0; tuilex < tranche; tuilex++) {
-            for (unsigned tuiley = 0; tuiley < tranche; tuiley++) {
+        for (unsigned tuiley = 0; tuiley < tranche; tuiley++) {
+            for (unsigned tuilex = 0; tuilex < tranche; tuilex++) {
 
-                for (int xloc = 0; xloc < GRAIN; xloc++) {
-                    for (int yloc = 0; yloc < GRAIN; yloc++) {
-                        unsigned x=tuilex*GRAIN+xloc;
+                for (int yloc = 0; yloc < GRAIN; yloc++) {
+                    for (int xloc = 0; xloc < GRAIN; xloc++) {
                         unsigned y=tuiley*GRAIN+yloc;
-                        if (x>0 && x<DIM && y>0 && y<DIM) {
-                            int n = (cur_img(x-1, y-1) !=0) +
-                                    (cur_img(x-1, y)   !=0) +
-                                    (cur_img(x-1, y+1) !=0) +
-                                    (cur_img(x  , y-1) !=0) +
-                                    (cur_img(x  , y+1) !=0) +
-                                    (cur_img(x+1, y-1) !=0) +
-                                    (cur_img(x+1, y)   !=0) +
-                                    (cur_img(x+1, y+1) !=0);
-                            if (cur_img(x, y)) {
-                                if (n==2 || n==3)
-                                    next_img(x,y) = couleur;
-                                else
-                                    next_img(x,y) = 0;
-                            }
-                            else {
-                                if (n==3)
-                                    next_img(x,y) = couleur;
-                                else
-                                    next_img(x,y) = 0;
-                            }
-                        }
+                        unsigned x=tuilex*GRAIN+xloc;
+                        if (x>0 && x<DIM-1 && y>0 && y<DIM-1)
+                            compute_case(x,y);
                     }
                 }
 
             }
         }
-
 
         swap_images();
     }
@@ -251,11 +226,11 @@ unsigned openMP_for_v1(unsigned nb_iter) {
     return 0;
 }
 
-///////////////////////////// Version séquentielle optimisé
-
-#define coord(x,y) (x+1)*tranche+y+1
-bool* curr_unchanged;
-bool* next_unchanged;
+///////////////////////////// Version optimisé fonctions générales
+#define coord(y,x) (y+1)*tranche+x+1
+bool* curr_unchanged = NULL;
+bool* next_unchanged = NULL;
+unsigned tranche;
 
 static void swap_tiles() {
     bool* tmp = curr_unchanged;
@@ -264,80 +239,97 @@ static void swap_tiles() {
     next_unchanged = tmp;
 }
 
-// Renvoie le nombre d'itérations effectuées avant stabilisation, ou 0
-unsigned compute_v2(unsigned nb_iter)
-{
-    unsigned tranche = DIM / GRAIN;
+void init_compute_tuile_opt() {
+    tranche = DIM / GRAIN;
 
-    static bool first = true;
-    if (first) {
-        first = false;
-        //greater size in order to don't test if a tile is en a extreme position or not
-        curr_unchanged = malloc(sizeof(unsigned)*(tranche+2)*(tranche+2));
-        for(int tuilex=-1; tuilex<=tranche;tuilex++)
-            for (int tuiley=-1; tuiley<=tranche; tuiley++)
-                curr_unchanged[coord(tuilex,tuiley)] = false;
-        next_unchanged = malloc(sizeof(unsigned)*(tranche+2)*(tranche+2));
-        for(int tuilex=-1; tuilex<=tranche;tuilex++)
-            for (int tuiley=-1; tuiley<=tranche; tuiley++)
-                next_unchanged[coord(tuilex,tuiley)] = false;
+    //greater size in order to don't test if a tile is en a extreme position or not
+    curr_unchanged = malloc(sizeof(unsigned)*(tranche+2)*(tranche+2));
+    if (!curr_unchanged)
+        exit(1);
+    for(int tuilex=-1; tuilex<=tranche;tuilex++)
+        for (int tuiley=-1; tuiley<=tranche; tuiley++)
+            curr_unchanged[coord(tuilex,tuiley)] = false;
+
+    next_unchanged = malloc(sizeof(unsigned)*(tranche+2)*(tranche+2));
+    if (!next_unchanged)
+        exit(1);
+    for(int tuilex=-1; tuilex<=tranche;tuilex++)
+        for (int tuiley=-1; tuiley<=tranche; tuiley++)
+            next_unchanged[coord(tuilex,tuiley)] = false;
+}
+
+void free_compute_tuile_opt() {
+    if (curr_unchanged) {
+        free(curr_unchanged);
+        curr_unchanged = NULL;
     }
+    if (next_unchanged) {
+        free(next_unchanged);
+        next_unchanged = NULL;
+    }
+}
 
 
-    for (unsigned it = 1; it <= nb_iter; it ++) {
-
-        for (int tuilex = 0; tuilex < tranche; tuilex++) {
-            for (int tuiley = 0; tuiley < tranche; tuiley++) {
-
-                if (!curr_unchanged[coord(tuilex,tuiley)] ||
-                        !curr_unchanged[coord(tuilex+1,tuiley)] ||
-                        !curr_unchanged[coord(tuilex-1,tuiley)] ||
-                        !curr_unchanged[coord(tuilex,tuiley+1)] ||
-                        !curr_unchanged[coord(tuilex,tuiley-1)] ||
-                        !curr_unchanged[coord(tuilex+1,tuiley+1)] ||
-                        !curr_unchanged[coord(tuilex+1,tuiley-1)] ||
-                        !curr_unchanged[coord(tuilex-1,tuiley+1)] ||
-                        !curr_unchanged[coord(tuilex-1,tuiley-1)]) {
-                    bool tuile_unchanged = true;
-                    for (int xloc = 0; xloc < GRAIN; xloc++) {
-                        for (int yloc = 0; yloc < GRAIN; yloc++) {
-                            unsigned x=tuilex*GRAIN+xloc;
-                            unsigned y=tuiley*GRAIN+yloc;
-                            if (x>0 && x<DIM && y>0 && y<DIM) {
-                                int n = (cur_img(x-1, y-1) !=0) +
-                                        (cur_img(x-1, y)   !=0) +
-                                        (cur_img(x-1, y+1) !=0) +
-                                        (cur_img(x  , y-1) !=0) +
-                                        (cur_img(x  , y+1) !=0) +
-                                        (cur_img(x+1, y-1) !=0) +
-                                        (cur_img(x+1, y)   !=0) +
-                                        (cur_img(x+1, y+1) !=0);
-                                if (cur_img(x, y)) {
-                                    if (n==2 || n==3)
-                                        next_img(x,y) = couleur;
-                                    else {
-                                        //cell dies
-                                        tuile_unchanged = false;
-                                        next_img(x,y) = 0;
-                                    }
-                                }
-                                else {
-                                    if (n==3) {
-                                        //cell creation
-                                        tuile_unchanged = false;
-                                        next_img(x,y) = couleur;
-                                    }
-                                    else
-                                        next_img(x,y) = 0;
-                                }
-                            }
+/////////////////////////////
+static inline void compute_tile_opt(int tuilex, int tuiley){
+    bool tuile_unchanged = true;
+    if (!(curr_unchanged[coord(tuiley,tuilex)] &&
+          curr_unchanged[coord(tuiley+1,tuilex)] &&
+          curr_unchanged[coord(tuiley-1,tuilex)] &&
+          curr_unchanged[coord(tuiley,tuilex+1)] &&
+          curr_unchanged[coord(tuiley,tuilex-1)] &&
+          curr_unchanged[coord(tuiley+1,tuilex+1)] &&
+          curr_unchanged[coord(tuiley+1,tuilex-1)] &&
+          curr_unchanged[coord(tuiley-1,tuilex+1)] &&
+          curr_unchanged[coord(tuiley-1,tuilex-1)])) {
+        for (int yloc = 0; yloc < GRAIN; yloc++) {
+            for (int xloc = 0; xloc < GRAIN; xloc++) {
+                unsigned y=tuiley*GRAIN+yloc;
+                unsigned x=tuilex*GRAIN+xloc;
+                if (y>0 && y<DIM-1 && x>0 && x<DIM-1) {
+                    int n = (cur_img(y-1, x-1) !=0) +
+                            (cur_img(y-1, x)   !=0) +
+                            (cur_img(y-1, x+1) !=0) +
+                            (cur_img(y  , x-1) !=0) +
+                            (cur_img(y  , x+1) !=0) +
+                            (cur_img(y+1, x-1) !=0) +
+                            (cur_img(y+1, x)   !=0) +
+                            (cur_img(y+1, x+1) !=0);
+                    if (cur_img(y, x)) {
+                        if (n==2 || n==3)
+                            next_img(y,x) = couleur;
+                        else {
+                            //cell dies
+                            tuile_unchanged = false;
+                            next_img(y,x) = 0;
                         }
                     }
-                    next_unchanged[coord(tuilex,tuiley)] = tuile_unchanged;
+                    else {
+                        if (n==3) {
+                            //cell creation
+                            tuile_unchanged = false;
+                            next_img(y,x) = couleur;
+                        }
+                        else
+                            next_img(y,x) = 0;
+                    }
                 }
-                else {
-                    next_unchanged[coord(tuilex,tuiley)] = true;
-                }
+            }
+        }
+    }
+    next_unchanged[coord(tuiley,tuilex)] = tuile_unchanged;
+}
+
+
+///////////////////////////// Version séquentielle optimisé
+unsigned compute_v2(unsigned nb_iter)
+{
+    for (unsigned it = 1; it <= nb_iter; it ++) {
+
+        for (int tuiley = 0; tuiley < tranche; tuiley++) {
+            for (int tuilex = 0; tuilex < tranche; tuilex++) {
+                compute_tile_opt(tuilex, tuiley);
+
 
             }
         }
@@ -348,101 +340,29 @@ unsigned compute_v2(unsigned nb_iter)
     return 0;
 }
 
-///////////////////////////// Version OpenMP optimisée
 
+///////////////////////////// Version OpenMP optimisée
 unsigned openMP_for_v2(unsigned nb_iter)
 {
-    unsigned tranche = DIM / GRAIN;
-
-    static bool first = true;
-    if (first) {
-        first = false;
-        //greater size in order to don't test if a tile is en a extreme position or not
-        curr_unchanged = malloc(sizeof(unsigned)*(tranche+2)*(tranche+2));
-        for(int tuilex=-1; tuilex<=tranche;tuilex++)
-            for (int tuiley=-1; tuiley<=tranche; tuiley++)
-                curr_unchanged[coord(tuilex,tuiley)] = false;
-        next_unchanged = malloc(sizeof(unsigned)*(tranche+2)*(tranche+2));
-        for(int tuilex=-1; tuilex<=tranche;tuilex++)
-            for (int tuiley=-1; tuiley<=tranche; tuiley++)
-                next_unchanged[coord(tuilex,tuiley)] = false;
-    }
-
-
     for (unsigned it = 1; it <= nb_iter; it ++) {
 
 #pragma omp parallel for schedule(guided,4) collapse(2)
-        for (int tuilex = 0; tuilex < tranche; tuilex++) {
-            for (int tuiley = 0; tuiley < tranche; tuiley++) {
+        for (int tuiley = 0; tuiley < tranche; tuiley++) {
+            for (int tuilex = 0; tuilex < tranche; tuilex++) {
+                compute_tile_opt(tuilex, tuiley);
 
-                if (!curr_unchanged[coord(tuilex,tuiley)] ||
-                        !curr_unchanged[coord(tuilex+1,tuiley)] ||
-                        !curr_unchanged[coord(tuilex-1,tuiley)] ||
-                        !curr_unchanged[coord(tuilex,tuiley+1)] ||
-                        !curr_unchanged[coord(tuilex,tuiley-1)] ||
-                        !curr_unchanged[coord(tuilex+1,tuiley+1)] ||
-                        !curr_unchanged[coord(tuilex+1,tuiley-1)] ||
-                        !curr_unchanged[coord(tuilex-1,tuiley+1)] ||
-                        !curr_unchanged[coord(tuilex-1,tuiley-1)]) {
-                    bool tuile_unchanged = true;
-                    for (int xloc = 0; xloc < GRAIN; xloc++) {
-                        for (int yloc = 0; yloc < GRAIN; yloc++) {
-                            unsigned x=tuilex*GRAIN+xloc;
-                            unsigned y=tuiley*GRAIN+yloc;
-                            if (x>0 && x<DIM && y>0 && y<DIM) {
-                                int n = (cur_img(x-1, y-1) !=0) +
-                                        (cur_img(x-1, y)   !=0) +
-                                        (cur_img(x-1, y+1) !=0) +
-                                        (cur_img(x  , y-1) !=0) +
-                                        (cur_img(x  , y+1) !=0) +
-                                        (cur_img(x+1, y-1) !=0) +
-                                        (cur_img(x+1, y)   !=0) +
-                                        (cur_img(x+1, y+1) !=0);
-                                if (cur_img(x, y)) {
-                                    if (n==2 || n==3)
-                                        next_img(x,y) = couleur;
-                                    else {
-                                        //cell dies
-                                        tuile_unchanged = false;
-                                        next_img(x,y) = 0;
-                                    }
-                                }
-                                else {
-                                    if (n==3) {
-                                        //cell creation
-                                        tuile_unchanged = false;
-                                        next_img(x,y) = couleur;
-                                    }
-                                    else
-                                        next_img(x,y) = 0;
-                                }
-                            }
-                        }
-                    }
-                    next_unchanged[coord(tuilex,tuiley)] = tuile_unchanged;
-                }
-                else {
-                    next_unchanged[coord(tuilex,tuiley)] = true;
-                }
 
             }
         }
-
-
         swap_tiles();
         swap_images();
     }
 
     return 0;
-}
-
-
-
-
-void first_touch_v2 ()
-{
 
 }
+
+
 
 ///////////////////////////// Version OpenCL
 
@@ -465,7 +385,7 @@ unsigned compute_v5 (unsigned nb_iter) {
     static bool first = true;
     if (first) {
         first = false;
-       picture = malloc(sizeof(unsigned) * DIM * DIM);
+        picture = malloc(sizeof(unsigned) * DIM * DIM);
     }
 
 
@@ -521,13 +441,13 @@ unsigned compute_v5 (unsigned nb_iter) {
 
         swap_images();
         get_picture_back(picture);
-        #pragma omp parallel for schedule(guided,4) collapse(2)
+#pragma omp parallel for schedule(guided,4) collapse(2)
         for (int x=0; x<DIM; x++) {
             for (int y=0; y<nb_tranches; y++) {
                 cur_img(y,x) = picture[y*DIM+x];
             }
         }
-        #pragma omp parallel for schedule(guided,4) collapse(2)
+#pragma omp parallel for schedule(guided,4) collapse(2)
         for (int x=0; x<DIM; x++) {
             for (int y=nb_tranches; y<DIM; y++) {
                 picture[y*DIM+x] = cur_img(y,x);
