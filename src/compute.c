@@ -21,11 +21,14 @@ void free_compute_tuile_opt();
 unsigned openMP_for_v0 (unsigned nb_iter); //l118
 unsigned openMP_for_v1 (unsigned nb_iter);
 unsigned openMP_for_v2 (unsigned nb_iter);
+unsigned openMP_task_v1(unsigned nb_iter);
+unsigned openMP_task_v2(unsigned nb_iter);
 unsigned compute_v3 (unsigned nb_iter);
 unsigned compute_v4 (unsigned nb_iter);
 unsigned compute_v5 (unsigned nb_iter);
 
 void_func_t first_touch [] = {
+    NULL,
     NULL,
     NULL,
     NULL,
@@ -44,6 +47,8 @@ int_func_t compute [] = {
     openMP_for_v0,
     openMP_for_v1,
     openMP_for_v2,
+    openMP_task_v1,
+    openMP_task_v2,
     compute_v3,
     compute_v4,
     compute_v5
@@ -53,15 +58,19 @@ char *version_name [] = {
     "Séquentielle",
     "Séquentielle tuilée",
     "Séquentielle optimisé",
-    "OpenMP",
-    "OpenMP tuilé",
-    "OpenMp optimisé",
+    "OpenMP for",
+    "OpenMP for tuilé",
+    "OpenMp for optimisé",
+    "OpenMP task tuilé",
+    "OpenMP task optimisé",
     "OpenCL",
     "OpenCL optimisé",
     "Hybrid"
 };
 
 unsigned opencl_used [] = {
+    0,
+    0,
     0,
     0,
     0,
@@ -81,6 +90,8 @@ unsigned init_required [] = {
     0,
     1,
     0,
+    1,
+    0,
     0,
     0
 };
@@ -93,6 +104,8 @@ void_func_t init_version [] = {
     NULL,
     init_compute_tuile_opt,
     NULL,
+    init_compute_tuile_opt,
+    NULL,
     NULL,
     NULL
 };
@@ -102,6 +115,8 @@ void_func_t free_version [] = {
     NULL,
     free_compute_tuile_opt,
     NULL,
+    NULL,
+    free_compute_tuile_opt,
     NULL,
     free_compute_tuile_opt,
     NULL,
@@ -169,6 +184,17 @@ unsigned openMP_for_v0(unsigned nb_iter) {
 }
 
 
+/////////////////////////////
+static inline void compute_tile(int tuilex, int tuiley) {
+    for (int yloc = 0; yloc < GRAIN; yloc++) {
+        for (int xloc = 0; xloc < GRAIN; xloc++) {
+            unsigned y=tuiley*GRAIN+yloc;
+            unsigned x=tuilex*GRAIN+xloc;
+            if (x>0 && x<DIM-1 && y>0 && y<DIM-1)
+                compute_case(x,y);
+        }
+    }
+}
 
 ///////////////////////////// Version séquentielle avec tuiles
 unsigned compute_v1(unsigned nb_iter){
@@ -176,20 +202,10 @@ unsigned compute_v1(unsigned nb_iter){
 
     for (unsigned it = 1; it <= nb_iter; it ++) {
 
-        for (unsigned tuiley = 0; tuiley < tranche; tuiley++) {
-            for (unsigned tuilex = 0; tuilex < tranche; tuilex++) {
+        for (unsigned tuiley = 0; tuiley < tranche; tuiley++)
+            for (unsigned tuilex = 0; tuilex < tranche; tuilex++)
 
-                for (int yloc = 0; yloc < GRAIN; yloc++) {
-                    for (int xloc = 0; xloc < GRAIN; xloc++) {
-                        unsigned y=tuiley*GRAIN+yloc;
-                        unsigned x=tuilex*GRAIN+xloc;
-                        if (x>0 && x<DIM-1 && y>0 && y<DIM-1)
-                            compute_case(x,y);
-                    }
-                }
-
-            }
-        }
+                compute_tile(tuilex, tuiley);
 
         swap_images();
     }
@@ -205,19 +221,31 @@ unsigned openMP_for_v1(unsigned nb_iter) {
     for (unsigned it = 1; it <= nb_iter; it ++) {
 
 #pragma omp parallel for schedule(guided,4) collapse(2)
-        for (unsigned tuiley = 0; tuiley < tranche; tuiley++) {
-            for (unsigned tuilex = 0; tuilex < tranche; tuilex++) {
+        for (unsigned tuiley = 0; tuiley < tranche; tuiley++)
+            for (unsigned tuilex = 0; tuilex < tranche; tuilex++)
+                compute_tile(tuilex, tuiley);
 
-                for (int yloc = 0; yloc < GRAIN; yloc++) {
-                    for (int xloc = 0; xloc < GRAIN; xloc++) {
-                        unsigned y=tuiley*GRAIN+yloc;
-                        unsigned x=tuilex*GRAIN+xloc;
-                        if (x>0 && x<DIM-1 && y>0 && y<DIM-1)
-                            compute_case(x,y);
-                    }
-                }
+        swap_images();
+    }
 
-            }
+    return 0;
+}
+
+
+///////////////////////////// Version OpenMP avec tuiles et tâches
+unsigned openMP_task_v1(unsigned nb_iter) {
+    unsigned tranche = DIM / GRAIN;
+
+    for (unsigned it = 1; it <= nb_iter; it ++) {
+
+#pragma omp parallel
+        {
+#pragma omp single
+            for (unsigned tuiley = 0; tuiley < tranche; tuiley++)
+                for (unsigned tuilex = 0; tuilex < tranche; tuilex++)
+#pragma omp task firstprivate(tuilex, tuiley)
+                    compute_tile(tuilex, tuiley);
+
         }
 
         swap_images();
@@ -225,6 +253,7 @@ unsigned openMP_for_v1(unsigned nb_iter) {
 
     return 0;
 }
+
 
 ///////////////////////////// Version optimisé fonctions générales
 #define coord(y,x) (y+1)*tranche+x+1
@@ -341,19 +370,16 @@ unsigned compute_v2(unsigned nb_iter)
 }
 
 
-///////////////////////////// Version OpenMP optimisée
+///////////////////////////// Version OpenMP for optimisée
 unsigned openMP_for_v2(unsigned nb_iter)
 {
     for (unsigned it = 1; it <= nb_iter; it ++) {
 
 #pragma omp parallel for schedule(guided,4) collapse(2)
-        for (int tuiley = 0; tuiley < tranche; tuiley++) {
-            for (int tuilex = 0; tuilex < tranche; tuilex++) {
+        for (int tuiley = 0; tuiley < tranche; tuiley++)
+            for (int tuilex = 0; tuilex < tranche; tuilex++)
                 compute_tile_opt(tuilex, tuiley);
 
-
-            }
-        }
         swap_tiles();
         swap_images();
     }
@@ -362,6 +388,28 @@ unsigned openMP_for_v2(unsigned nb_iter)
 
 }
 
+
+///////////////////////////// Version OpenMP task optimisé
+unsigned openMP_task_v2(unsigned nb_iter) {
+
+    for (unsigned it = 1; it <= nb_iter; it ++) {
+
+#pragma omp parallel
+        {
+#pragma omp single
+            for (int tuiley = 0; tuiley < tranche; tuiley++)
+                for (int tuilex = 0; tuilex < tranche; tuilex++)
+#pragma omp task firstprivate(tuilex, tuiley)
+                    compute_tile_opt(tuilex, tuiley);
+
+        }
+
+        swap_tiles();
+        swap_images();
+    }
+
+    return 0;
+}
 
 
 ///////////////////////////// Version OpenCL
