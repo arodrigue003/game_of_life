@@ -1,6 +1,9 @@
+#define _GNU_SOURCE
+
 #include <SDL.h>
 #include <stdbool.h>
 #include <stdlib.h>
+#include <stdio.h>
 
 #include "draw.h"
 #include "graphics.h"
@@ -106,4 +109,85 @@ void spiral_regular (int xdebut, int xfin, int ydebut, int yfin, int pas, int nb
   for (i = xdebut + taille; i < xfin - taille; i += 2*taille)
     for (j = ydebut + taille; j < yfin - taille; j += 2*taille)
       spiral (i,j, pas, nbtours); 
+}
+
+
+void draw_file(char *filename) {
+    FILE *fp;
+    char* line = NULL;
+    size_t len = 0;
+    ssize_t read;
+
+    // open the file
+    fp = fopen(filename, "r");
+    if (fp==NULL) {
+        printf("Unable to open the file\n");
+        exit(EXIT_FAILURE);
+    }
+
+    //Init memory
+    memset(&cur_img(0,0), 0, DIM*DIM* sizeof(cur_img(0,0)));
+
+    bool coords = false;
+    int x, y, xoffset, yoffset, currenty, currentx, currentNumber;
+    currentNumber = 0;
+
+    //parse the file
+    while ((read = getline(&line, &len, fp)) != -1) {
+        if (len>0 && line[0] != '#' && line[0] != '\n') {
+            if (!coords) {
+                sscanf(line, "x = %d, y = %d", &x, &y);
+                printf("Pattern size : x = %d, y = %d\n", x, y);
+                if (x>DIM) {
+                    printf("Not enough columns\n");
+                    exit(EXIT_FAILURE);
+                }
+                xoffset = (DIM - x)/2;
+                currentx = xoffset;
+                if (y>DIM) {
+                    printf("Not enough rows\n");
+                    exit(EXIT_FAILURE);
+                }
+                yoffset = (DIM - y)/2;
+                currenty = yoffset;
+                coords = true;
+            }
+            else {
+                for (int n=0; n<strlen(line); n++) {
+                    if (line[n] >= '0' && line[n] <= '9') {
+                        //number, add it to the currentNumber counter
+                        currentNumber = 10*currentNumber + line[n] - '0';
+                    }
+                    else if (line[n] == 'b' ||
+                             line[n] == 'o' ||
+                             line[n] == '$' ||
+                             line[n] == '!'){
+                        //printf("%d\n", currentNumber);
+                        int repetitionNumber = (currentNumber==0) ? 1 : currentNumber;
+                        if (line[n] == 'o') {
+                            //printf n cells with the color
+                            for (int i=0; i<repetitionNumber; i++)
+                                cur_img (currenty,currentx+i) = couleur;
+                        }
+                        currentx+=repetitionNumber;
+                        if (line[n] == '$') {
+                            //end of line
+                            currentx = xoffset;
+                            currenty += repetitionNumber;
+                        }
+                        currentNumber = 0;
+
+                        if (line[n] == '!') {
+                            printf("%d\n", currenty - yoffset);
+                            return;
+                        }
+
+                    }
+                }
+            }
+
+        }
+    }
+    if (line)
+        free(line);
 }

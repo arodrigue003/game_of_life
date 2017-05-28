@@ -6,5 +6,6 @@
 void spiral_regular (int xdebut, int xfin, int ydebut, int yfin, int pas, int nbtours);
 void draw_guns (void);
 void draw_random (void);
+void draw_file(char *filename);
 
 #endif

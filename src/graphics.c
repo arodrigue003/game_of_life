@@ -1,7 +1,7 @@
 
 #include <SDL_image.h>
 #include <SDL_opengl.h>
-
+#include <string.h>
 
 #include "constants.h"
 #include "graphics.h"
@@ -223,10 +223,21 @@ void graphics_init (int *argc, char *argv[])
 
   printf ("Version utilisée : %s ", version_name [version]);
 
-  if (pngfile == NULL) {
+  size_t stringlen = 0;
+  if (pngfile != NULL)
+      stringlen = strlen(pngfile);
+
+  if (pngfile == NULL || (stringlen >= 4 && pngfile[stringlen-4] == '.' &&
+                          pngfile[stringlen-3] == 'r' &&
+                          pngfile[stringlen-2] == 'l' &&
+                          pngfile[stringlen-1] == 'e')) {
     unsigned size = DIM ? DIM : DEFAULT_DIM;
     graphics_create_surface (size);
-    if (!do_random)
+    if (pngfile) {
+        printf("load RLE file format\n");
+        draw_file(pngfile);
+    }
+    else if (!do_random)
       draw_guns ();
     else
       draw_random();
