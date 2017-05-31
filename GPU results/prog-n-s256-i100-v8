@@ -1,4 +1,5 @@
 16 compute_pixel_naif -n -s 256 -i 100 -v 8 : 
+Nb tuil
 0.497
 0.493
 0.494
