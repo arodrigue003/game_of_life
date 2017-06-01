@@ -385,7 +385,7 @@ unsigned openMP_for_v2(unsigned nb_iter)
 {
     for (unsigned it = 1; it <= nb_iter; it ++) {
 
-#pragma omp parallel for schedule(static) collapse(2)
+#pragma omp parallel for schedule(dynamic) collapse(2)
         for (int tuiley = 0; tuiley < tranche; tuiley++)
             for (int tuilex = 0; tuilex < tranche; tuilex++)
                 compute_tile_opt(tuilex, tuiley);
