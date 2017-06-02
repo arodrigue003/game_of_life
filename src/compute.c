@@ -7,7 +7,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 
-#define GRAIN 64
+#define GRAIN 128
 
 static unsigned couleur = 0xFFFF00FF; // Yellow
 
@@ -172,7 +172,7 @@ unsigned openMP_for_v0(unsigned nb_iter) {
 
     for (unsigned it = 1; it <= nb_iter; it ++) {
 
-#pragma omp parallel for schedule(static) collapse(2)
+#pragma omp parallel for schedule(dynamic) collapse(2)
         for (int y = 1; y < DIM-1; y++)
             for (int x = 1; x < DIM-1; x++)
                 compute_case(x,y);
