@@ -7,7 +7,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 
-#define GRAIN 128
+#define GRAIN 32
 
 static unsigned couleur = 0xFFFF00FF; // Yellow
 
