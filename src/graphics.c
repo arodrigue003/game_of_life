@@ -332,8 +332,9 @@ void graphics_clean (void)
   if (image != NULL)
     free (image);
 
-  if (surface != NULL)
+  if (surface != NULL) {
       SDL_FreeSurface (surface);
+  }
 
   if (texture != NULL)
     SDL_DestroyTexture (texture);

@@ -65,7 +65,7 @@ char *version_name [] = {
     "OpenMP task optimisé",
     "OpenCL",
     "OpenCL optimisé",
-    "Hybrid"
+    "Hybride"
 };
 
 unsigned opencl_used [] = {
