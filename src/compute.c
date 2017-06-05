@@ -13,19 +13,19 @@ static unsigned couleur = 0xFFFF00FF; // Yellow
 
 unsigned version = 0;
 
-unsigned compute_v0 (unsigned nb_iter); //l99
-unsigned compute_v1 (unsigned nb_iter);
-void init_compute_tuile_opt();
-unsigned compute_v2 (unsigned nb_iter);
-void free_compute_tuile_opt();
-unsigned openMP_for_v0 (unsigned nb_iter); //l118
-unsigned openMP_for_v1 (unsigned nb_iter);
-unsigned openMP_for_v2 (unsigned nb_iter);
-unsigned openMP_task_v1(unsigned nb_iter);
-unsigned openMP_task_v2(unsigned nb_iter);
-unsigned compute_v3 (unsigned nb_iter);
-unsigned compute_v4 (unsigned nb_iter);
-unsigned compute_v5 (unsigned nb_iter);
+unsigned seq_v0 (unsigned nb_iter); // l 152
+unsigned seq_v1 (unsigned nb_iter); // l 200
+void init_compute_tuile_opt(); // l 271
+unsigned seq_v2 (unsigned nb_iter); // l 364
+void free_compute_tuile_opt(); // l 290
+unsigned openMP_for_v0 (unsigned nb_iter); // l 118
+unsigned openMP_for_v1 (unsigned nb_iter); // l 171
+unsigned openMP_for_v2 (unsigned nb_iter); // l 384
+unsigned openMP_task_v0(unsigned nb_iter); // l 236
+unsigned openMP_task_v1(unsigned nb_iter); // l 403
+unsigned OpenCL_v0 (unsigned nb_iter); // l 433
+unsigned OpenCl_v1 (unsigned nb_iter); // l 438
+unsigned OpenCL_v2 (unsigned nb_iter); // l 447
 
 void_func_t first_touch [] = {
     NULL,
@@ -41,17 +41,17 @@ void_func_t first_touch [] = {
 };
 
 int_func_t compute [] = {
-    compute_v0,
-    compute_v1,
-    compute_v2,
+    seq_v0,
+    seq_v1,
+    seq_v2,
     openMP_for_v0,
     openMP_for_v1,
     openMP_for_v2,
+    openMP_task_v0,
     openMP_task_v1,
-    openMP_task_v2,
-    compute_v3,
-    compute_v4,
-    compute_v5
+    OpenCL_v0,
+    OpenCl_v1,
+    OpenCL_v2
 };
 
 char *version_name [] = {
@@ -149,7 +149,7 @@ static inline void compute_case(int x, int y) {
 
 
 ///////////////////////////// Version séquentielle simple
-unsigned compute_v0(unsigned nb_iter) {
+unsigned seq_v0(unsigned nb_iter) {
 
     for (unsigned it = 1; it <= nb_iter; it ++) {
 
@@ -197,7 +197,7 @@ static inline void compute_tile(int tuilex, int tuiley) {
 }
 
 ///////////////////////////// Version séquentielle avec tuiles
-unsigned compute_v1(unsigned nb_iter){
+unsigned seq_v1(unsigned nb_iter){
     unsigned tranche = DIM / GRAIN;
 
     for (unsigned it = 1; it <= nb_iter; it ++) {
@@ -233,7 +233,7 @@ unsigned openMP_for_v1(unsigned nb_iter) {
 
 
 ///////////////////////////// Version OpenMP avec tuiles et tâches
-unsigned openMP_task_v1(unsigned nb_iter) {
+unsigned openMP_task_v0(unsigned nb_iter) {
     unsigned tranche = DIM / GRAIN;
 
     for (unsigned it = 1; it <= nb_iter; it ++) {
@@ -361,7 +361,7 @@ static inline void compute_tile_opt(int tuilex, int tuiley) {
 
 
 ///////////////////////////// Version séquentielle optimisé
-unsigned compute_v2(unsigned nb_iter)
+unsigned seq_v2(unsigned nb_iter)
 {
     for (unsigned it = 1; it <= nb_iter; it ++) {
 
@@ -400,7 +400,7 @@ unsigned openMP_for_v2(unsigned nb_iter)
 
 
 ///////////////////////////// Version OpenMP task optimisé
-unsigned openMP_task_v2(unsigned nb_iter) {
+unsigned openMP_task_v1(unsigned nb_iter) {
 
     for (unsigned it = 1; it <= nb_iter; it ++) {
 
@@ -430,12 +430,12 @@ unsigned openMP_task_v2(unsigned nb_iter) {
 ///////////////////////////// Version OpenCL
 
 // Renvoie le nombre d'itérations effectuées avant stabilisation, ou 0
-unsigned compute_v3 (unsigned nb_iter) {
+unsigned OpenCL_v0 (unsigned nb_iter) {
     return ocl_compute (nb_iter);
 }
 
 // Renvoie le nombre d'itérations effectuées avant stabilisation, ou 0
-unsigned compute_v4 (unsigned nb_iter) {
+unsigned OpenCl_v1 (unsigned nb_iter) {
     return ocl_compute_opt (nb_iter);
 }
 
@@ -444,7 +444,7 @@ unsigned compute_v4 (unsigned nb_iter) {
 unsigned * picture;
 
 // Renvoie le nombre d'itérations effectuées avant stabilisation, ou 0
-unsigned compute_v5 (unsigned nb_iter) {
+unsigned OpenCL_v2 (unsigned nb_iter) {
     static bool first = true;
     if (first) {
         first = false;
